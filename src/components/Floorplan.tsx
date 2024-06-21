@@ -4,7 +4,6 @@
 import { useEffect, useRef, useState } from "react";
 import { Streamer } from '../models/Streamer';
 import { GameState } from '../state/GameState';
-import { KeyboardHandler } from '../utils/KeyboardHandler';
 import { GameLoop } from '../utils/GameLoop';
 
 const floorplanImage = "/floorplan.png"; // Path to your floorplan image
@@ -13,14 +12,10 @@ const playerImage = "/player.png"; // Path to your player image
 const Floorplan: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [gameState] = useState(new GameState());
-  const [keyboardHandler] = useState(new KeyboardHandler());
 
   const avatarSize = 150; // 1.5 times larger
   const floorplanWidth = 1600;
   const floorplanHeight = 1200;
-  const step = 1;
-  const friction = 0.9;
-  let velocity = { x: 0, y: 0 };
 
   useEffect(() => {
     const player = new Streamer('Igor Peric', 600, 400, playerImage);
@@ -28,19 +23,7 @@ const Floorplan: React.FC = () => {
     gameState.addStreamer(new Streamer('Rubi Diaz', 800, 550, playerImage));
     gameState.addStreamer(new Streamer('Branko Krstic', 300, 200, playerImage));
 
-    const setupCamera = async () => {
-      try {
-        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
-        const videoElement = document.createElement('video');
-        videoElement.srcObject = stream;
-        videoElement.play();
-        player.setVideoElement(videoElement);
-      } catch (err) {
-        console.error('Error accessing camera:', err);
-      }
-    };
-
-    setupCamera();
+    player.setupCamera();
 
     const drawAvatar = (ctx: CanvasRenderingContext2D, streamer: Streamer) => {
       // Draw radial gradient glow effect
@@ -52,8 +35,8 @@ const Floorplan: React.FC = () => {
         streamer.y + avatarSize / 2,
         avatarSize
       );
-      gradient.addColorStop(0, 'rgba(255, 255, 255, 0.6)');
-      gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+      gradient.addColorStop(0, 'rgba(0, 0, 0, 0.6)');
+      gradient.addColorStop(1, 'rgba(0, 0, 0, 0)');
 
       ctx.save();
       ctx.beginPath();
@@ -68,7 +51,7 @@ const Floorplan: React.FC = () => {
       ctx.arc(streamer.x + avatarSize / 2, streamer.y + avatarSize / 2, avatarSize / 2, 0, Math.PI * 2);
       ctx.closePath();
       ctx.clip();
-      
+
       if (streamer.cameraActive && streamer.videoElement) {
         const video = streamer.videoElement;
         const aspectRatio = video.videoWidth / video.videoHeight;
@@ -95,17 +78,17 @@ const Floorplan: React.FC = () => {
       }
 
       ctx.restore();
-      
+
       const textX = streamer.x + avatarSize / 2;
       const textY = streamer.y + avatarSize + 20;
       const gradientText = ctx.createLinearGradient(textX - 50, textY - 10, textX + 50, textY + 10);
       gradientText.addColorStop(0, "rgba(0, 0, 0, 0.0)");
       gradientText.addColorStop(0.5, "rgba(0, 0, 0, 0.6)");
       gradientText.addColorStop(1, "rgba(0, 0, 0, 0.0)");
-      
+
       ctx.fillStyle = gradientText;
       ctx.fillRect(textX - 50, textY - 15, 100, 20);
-  
+
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.font = "16px Arial";
@@ -127,37 +110,11 @@ const Floorplan: React.FC = () => {
       };
     };
 
-    const update = () => {
-      const player = gameState.getStreamers().find(s => s.name === 'Igor Peric');
-      if (!player) return;
-
-      let dx = 0;
-      let dy = 0;
-      if (keyboardHandler.isKeyPressed('ArrowUp')) dy -= step;
-      if (keyboardHandler.isKeyPressed('ArrowDown')) dy += step;
-      if (keyboardHandler.isKeyPressed('ArrowLeft')) dx -= step;
-      if (keyboardHandler.isKeyPressed('ArrowRight')) dx += step;
-
-      velocity.x += dx;
-      velocity.y += dy;
-
-      velocity.x *= friction;
-      velocity.y *= friction;
-
-      const newX = Math.max(0, Math.min(player.x + velocity.x, floorplanWidth - avatarSize));
-      const newY = Math.max(0, Math.min(player.y + velocity.y, floorplanHeight - avatarSize));
-
-      gameState.updateStreamerPosition('Igor Peric', newX, newY);
-    };
-
-    const gameLoop = new GameLoop(() => {
-      update();
-      draw();
-    });
+    const gameLoop = new GameLoop(draw, gameState);
 
     gameLoop.start();
     return () => gameLoop.stop();
-  }, [gameState, keyboardHandler]);
+  }, [gameState]);
 
   return (
     <div className="flex justify-center items-center h-screen">
