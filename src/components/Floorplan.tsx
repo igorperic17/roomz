@@ -6,24 +6,40 @@ import { Streamer } from '../models/Streamer';
 import { GameState } from '../state/GameState';
 import { GameLoop } from '../utils/GameLoop';
 
-const floorplanImage = "/floorplan.png"; // Path to your floorplan image
-const playerImage = "/player.png"; // Path to your player image
+const floorplanImageSrc = "/floorplan.png"; // Path to your floorplan image
+const playerImageSrc = "/player.png"; // Path to your player image
 
 const Floorplan: React.FC = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const [gameState] = useState(new GameState());
+  const gameStateRef = useRef<GameState>(new GameState());
+  const initializedRef = useRef<boolean>(false);
 
   const avatarSize = 150; // 1.5 times larger
   const floorplanWidth = 1600;
   const floorplanHeight = 1200;
 
   useEffect(() => {
-    const player = new Streamer('Igor Peric', 600, 400, playerImage);
-    gameState.addStreamer(player);
-    gameState.addStreamer(new Streamer('Rubi Diaz', 800, 550, playerImage));
-    gameState.addStreamer(new Streamer('Branko Krstic', 300, 200, playerImage));
+    if (initializedRef.current) return;
+    initializedRef.current = true; // Mark as initialized to prevent re-initialization
 
-    player.setupCamera();
+    console.log("Initializing the game...");
+
+    const gameState = gameStateRef.current;
+    const floorplanImage = new Image();
+    floorplanImage.src = floorplanImageSrc;
+
+    const playerImage = new Image();
+    playerImage.src = playerImageSrc;
+
+    const player = new Streamer('Igor Peric', 600, 400, playerImageSrc);
+    gameState.addStreamer(player);
+    gameState.addStreamer(new Streamer('Rubi Diaz', 800, 550, playerImageSrc));
+    gameState.addStreamer(new Streamer('Branko Krstic', 300, 200, playerImageSrc));
+
+    player.setupCamera().then(() => {
+      console.log("Camera setup complete, starting stream...");
+      player.startStreaming('demoStream').catch(err => console.error('Error starting stream:', err));
+    });
 
     const drawAvatar = (ctx: CanvasRenderingContext2D, streamer: Streamer) => {
       // Draw radial gradient glow effect
@@ -70,11 +86,7 @@ const Floorplan: React.FC = () => {
           avatarSize
         );
       } else {
-        const image = new Image();
-        image.src = streamer.imageSrc;
-        image.onload = () => {
-          ctx.drawImage(image, streamer.x, streamer.y, avatarSize, avatarSize);
-        };
+        ctx.drawImage(playerImage, streamer.x, streamer.y, avatarSize, avatarSize);
       }
 
       ctx.restore();
@@ -100,21 +112,22 @@ const Floorplan: React.FC = () => {
       const ctx = canvas?.getContext("2d");
       if (!canvas || !ctx) return;
 
-      const image = new Image();
-      image.src = floorplanImage;
-
-      image.onload = () => {
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(image, 0, 0, floorplanWidth, floorplanHeight);
-        gameState.getStreamers().forEach(streamer => drawAvatar(ctx, streamer));
-      };
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(floorplanImage, 0, 0, floorplanWidth, floorplanHeight);
+      gameState.getStreamers().forEach(streamer => drawAvatar(ctx, streamer));
     };
 
-    const gameLoop = new GameLoop(draw, gameState);
+    floorplanImage.onload = () => {
+      const gameLoop = new GameLoop(draw, gameState);
+      console.log("Starting game loop...");
+      gameLoop.start();
 
-    gameLoop.start();
-    return () => gameLoop.stop();
-  }, [gameState]);
+      return () => {
+        console.log("Stopping game loop...");
+        gameLoop.stop();
+      };
+    };
+  }, []);
 
   return (
     <div className="flex justify-center items-center h-screen">
