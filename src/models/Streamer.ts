@@ -9,6 +9,7 @@ export class Streamer {
   videoElement: HTMLVideoElement | null = null;
   cameraActive: boolean = false;
   thetaStream: ThetaStream;
+  socket: WebSocket | null = null;
 
   constructor(name: string, x: number, y: number, imageSrc: string) {
     this.name = name;
@@ -45,7 +46,9 @@ export class Streamer {
           try {
             const { streamServer, streamKey } = await this.thetaStream.selectEdgeIngestor(ingestor.id, streamId);
             if (this.videoElement) {
-              this.setupMediaRecorder(streamServer!, streamKey!);
+              const rtmpUrl = `${streamServer}/${streamKey}`;
+              console.log(`RTMP URL: ${rtmpUrl}`);
+              this.setupMediaRecorder(`ws://localhost:8080`, rtmpUrl);
             }
             break; // If the selection is successful, exit the loop
           } catch (error) {
@@ -60,57 +63,30 @@ export class Streamer {
     }
   }
 
-  setupMediaRecorder(streamServer: string, streamKey: string) {
+  setupMediaRecorder(wsUrl: string, rtmpUrl: string) {
     const stream = this.videoElement!.srcObject as MediaStream;
+    const mimeType = 'video/webm; codecs=vp9';
+    const mediaRecorder = new MediaRecorder(stream, { mimeType });
 
-    try {
-      const mimeType = 'video/webm; codecs=vp9';
-      const videoRecorder = new MediaRecorder(stream, { mimeType });
-      const audioRecorder = new MediaRecorder(stream, { mimeType });
+    this.socket = new WebSocket(wsUrl);
 
-      const videoChunks: Blob[] = [];
-      const audioChunks: Blob[] = [];
+    this.socket.onopen = () => {
+      console.log('WebSocket connection opened');
+      console.log(`Sending RTMP URL: ${rtmpUrl}`);
+      this.socket!.send(JSON.stringify({ rtmpUrl }));
+    };
 
-      videoRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          videoChunks.push(event.data);
-        }
-      };
+    this.socket.onerror = (error) => {
+      console.error('WebSocket error:', error);
+    };
 
-      audioRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          audioChunks.push(event.data);
-        }
-      };
+    mediaRecorder.ondataavailable = (event) => {
+      if (event.data.size > 0 && this.socket?.readyState === WebSocket.OPEN) {
+        console.log('Sending data chunk:', event.data);
+        this.socket.send(event.data);
+      }
+    };
 
-      videoRecorder.onstop = () => {
-        const videoBlob = new Blob(videoChunks, { type: mimeType });
-        const audioBlob = new Blob(audioChunks, { type: mimeType });
-
-        const worker = new Worker(new URL('../workers/ffmpeg-worker.js', import.meta.url));
-        worker.postMessage({
-          type: 'start',
-          streamServer,
-          streamKey,
-          videoBlob,
-          audioBlob,
-        });
-
-        worker.onmessage = (event) => {
-          const { type, data } = event.data;
-          if (type === 'log') {
-            console.log(data);
-          } else if (type === 'error') {
-            console.error(data);
-          }
-        };
-      };
-
-      videoRecorder.start(1000); // Collect 1-second chunks
-      audioRecorder.start(1000); // Collect 1-second chunks
-
-    } catch (error) {
-      console.error('Error starting MediaRecorder:', error);
-    }
+    mediaRecorder.start(1000); // Collect 1-second chunks
   }
 }

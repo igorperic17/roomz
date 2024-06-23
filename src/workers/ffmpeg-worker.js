@@ -1,30 +1,27 @@
-import * as ffmpeg from '@ffmpeg/ffmpeg';
+import { createFFmpeg, fetchFile } from '@ffmpeg/ffmpeg';
 
-const { createFFmpeg, fetchFile } = ffmpeg;
+const ffmpeg = createFFmpeg({ log: true });
+let ffmpegInitialized = false;
 
-const ffmpegInstance = createFFmpeg({ log: true });
-
-self.onmessage = async (event) => {
-  const { type, streamServer, streamKey, videoBlob, audioBlob } = event.data;
+onmessage = async (event) => {
+  const { type, data, streamServer, streamKey } = event.data;
 
   if (type === 'start') {
-    await ffmpegInstance.load();
+    if (!ffmpegInitialized) {
+      await ffmpeg.load();
+      ffmpegInitialized = true;
+      postMessage({ type: 'log', data: 'FFmpeg loaded' });
+    }
 
-    // Write video and audio blobs to FFmpeg file system
-    ffmpegInstance.FS('writeFile', 'video.webm', await fetchFile(videoBlob));
-    ffmpegInstance.FS('writeFile', 'audio.webm', await fetchFile(audioBlob));
+    postMessage({ type: 'log', data: 'FFmpeg started' });
 
-    // Run FFmpeg command to stream to RTMP server
-    await ffmpegInstance.run(
-      '-re',
-      '-i', 'video.webm',
-      '-i', 'audio.webm',
-      '-c:v', 'libx264',
-      '-c:a', 'aac',
-      '-f', 'flv',
-      `${streamServer}/${streamKey}`
-    );
-
-    self.postMessage({ type: 'log', data: 'Streaming started' });
+  } else if (type === 'data') {
+    try {
+      ffmpeg.FS('writeFile', 'input.webm', await fetchFile(data));
+      await ffmpeg.run('-re', '-i', 'input.webm', '-c:v', 'libx264', '-preset', 'veryfast', '-maxrate', '3000k', '-bufsize', '6000k', '-pix_fmt', 'yuv420p', '-g', '50', '-c:a', 'aac', '-b:a', '160k', '-ar', '44100', '-strict', 'experimental', '-f', 'flv', `${streamServer}/${streamKey}`);
+      postMessage({ type: 'log', data: 'Chunk processed' });
+    } catch (error) {
+      postMessage({ type: 'error', data: error.message });
+    }
   }
 };
