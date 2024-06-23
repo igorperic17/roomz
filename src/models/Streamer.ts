@@ -1,4 +1,3 @@
-// src/models/Streamer.ts
 import ThetaStream from '../api/ThetaStream';
 
 export class Streamer {
@@ -40,23 +39,16 @@ export class Streamer {
     try {
       await this.thetaStream.initialize();
       const streamId = await this.thetaStream.createStream(streamName);
-      const ingestors = await this.thetaStream.listEdgeIngestors();
-      if (ingestors.length > 0) {
-        for (const ingestor of ingestors) {
-          try {
-            const { streamServer, streamKey } = await this.thetaStream.selectEdgeIngestor(ingestor.id, streamId);
-            if (this.videoElement) {
-              const rtmpUrl = `${streamServer}/${streamKey}`;
-              console.log(`RTMP URL: ${rtmpUrl}`);
-              this.setupMediaRecorder(`ws://localhost:8080`, rtmpUrl);
-            }
-            break; // If the selection is successful, exit the loop
-          } catch (error) {
-            console.error(`Failed to select ingestor ${ingestor.id}, trying next...`, error);
-          }
+      const ingestorId = '0x093D7e6936fbd2e86f72DB6A5050CbC1535A232A';
+      try {
+        const { streamServer, streamKey } = await this.thetaStream.selectEdgeIngestor(ingestorId, streamId);
+        if (this.videoElement) {
+          const rtmpUrl = `${streamServer}/${streamKey}`;
+          console.log(`Constructed RTMP URL: ${rtmpUrl}`);
+          this.setupMediaRecorder(`ws://localhost:8080`, rtmpUrl);
         }
-      } else {
-        console.error("No available ingestors found.");
+      } catch (error) {
+        console.error(`Failed to select ingestor ${ingestorId}`, error);
       }
     } catch (error) {
       console.error('Error starting stream:', error);
